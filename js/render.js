@@ -25,7 +25,10 @@ function num(cx, cy, v, size, alpha) {
   ctx.lineWidth = Math.max(2, f * 0.26); ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.strokeText(t, cx, cy + f * 0.05);
   ctx.fillStyle = numCol(v); ctx.fillText(t, cx, cy + f * 0.05); ctx.restore();
 }
-function softShadow(on, z, k) { if (on) { ctx.shadowColor = 'rgba(52,44,24,' + (0.16 * (k || 1)) + ')'; ctx.shadowBlur = z * 0.2; ctx.shadowOffsetY = z * 0.07; } else { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; } }
+function fakeShadow(x, y, w, h, r, z, k) { // billiger weicher Schatten ohne shadowBlur (schnell auf Tablets/Handys)
+  for (let i = 3; i >= 1; i--) { ctx.fillStyle = 'rgba(52,44,24,' + (0.045 * (k || 1)) + ')'; rr(x - z * 0.03 * i, y - z * 0.01 * i + z * 0.05, w + z * 0.06 * i, h + z * 0.06 * i, r + z * 0.03 * i); ctx.fill(); }
+}
+function softShadow() {}
 
 // ---- Baender: durchgehende Spur ----
 function outDirs(n) {
@@ -86,7 +89,7 @@ function drawMachine(b, ghost) {
   let sc = 1 + 0.07 * pulse; if (b.born != null && !ghost) { const a = (G.t - b.born) / 0.3; if (a < 1) sc *= 0.55 + 0.45 * ease(Math.max(0, a)); }
   ctx.save(); ctx.translate(cx, cy); ctx.scale(sc, sc); if (ghost) ctx.globalAlpha = 0.62;
   const h = z * 0.43;
-  softShadow(!ghost, z, 1 + pulse * 0.4);
+  if (!ghost) fakeShadow(-h, -h, 2 * h, 2 * h, z * 0.2, z, 1 + pulse * 0.5);
   rr(-h, -h, 2 * h, 2 * h, z * 0.2);
   const g = ctx.createLinearGradient(0, -h, 0, h); g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#f3f1ea'); ctx.fillStyle = g; ctx.fill(); softShadow(false);
   ctx.lineWidth = Math.max(1.2, z * 0.035); ctx.strokeStyle = pulse > 0 ? col : C.edge; ctx.stroke();
@@ -121,7 +124,7 @@ function drawMachine(b, ghost) {
 function drawHub() {
   const z = CAM.z, x = w2sx(-1), y = w2sy(-1), s = z * 3, p = hubB.st.pulse || 0, sc = 1 + 0.025 * p;
   ctx.save(); ctx.translate(x + s / 2, y + s / 2); ctx.scale(sc, sc);
-  softShadow(true, z * 2.2, 1.1); rr(-s / 2 + z * 0.05, -s / 2 + z * 0.05, s - z * 0.1, s - z * 0.1, z * 0.38);
+  fakeShadow(-s / 2 + z * 0.05, -s / 2 + z * 0.05, s - z * 0.1, s - z * 0.1, z * 0.38, z * 1.6, 1.4); rr(-s / 2 + z * 0.05, -s / 2 + z * 0.05, s - z * 0.1, s - z * 0.1, z * 0.38);
   const g = ctx.createLinearGradient(0, -s / 2, 0, s / 2); g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#f1efe8'); ctx.fillStyle = g; ctx.fill(); softShadow(false);
   ctx.lineWidth = Math.max(2, z * 0.06); ctx.strokeStyle = C.ink; ctx.stroke();
   rr(-s / 2 + z * 0.3, -s / 2 + z * 0.3, s - z * 0.6, s - z * 0.6, z * 0.22); ctx.lineWidth = Math.max(1, z * 0.025); ctx.strokeStyle = C.edge; ctx.stroke();

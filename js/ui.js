@@ -24,14 +24,15 @@ onEvent = (k, o) => {
 };
 
 function toolList() { const a = TOOL_ORDER.filter(t => G.unl.has(t)); a.push('del'); return a; }
-function selectTool(t) { UI.tool = t; UI.last = null; document.body.classList.toggle('tool', !!t); buildBar(); showTip(t); }
+function markBar() { const l = [null, ...toolList()]; [...$('bar').children].forEach((b, i) => b.classList.toggle('on', l[i] === UI.tool)); }
+function selectTool(t) { UI.tool = t; UI.last = null; document.body.classList.toggle('tool', !!t); markBar(); showTip(t); }
 function showTip(t) {
   const e = $('tip'); if (!t) { e.hidden = true; return; }
   e.textContent = t === 'del' ? 'Abriss: Tippen oder Ziehen entfernt Bauteile.' : MACH[t].name + ' – ' + (MACH[t].info || ''); e.hidden = false;
   clearTimeout(showTip.t); showTip.t = setTimeout(() => e.hidden = true, 3500);
 }
 function buildBar() {
-  const bar = $('bar'); bar.innerHTML = '';
+  const bar = $('bar'), sl = bar.scrollLeft; bar.innerHTML = '';
   const mk = (id, sym, label, key, color) => {
     const b = document.createElement('button'); b.className = 'tool' + (UI.tool === id ? ' on' : ''); if (color) b.style.setProperty('--c', color);
     b.innerHTML = (key ? '<span class="k">' + key + '</span>' : '') + '<span class="s">' + sym + '</span><span class="l">' + label + '</span>';
@@ -43,6 +44,7 @@ function buildBar() {
     const ic = t === 'del' || SVG[t] ? svg(t) : MACH[t].sym;
     mk(t, ic, t === 'del' ? 'Abriss' : MACH[t].name.length > 9 ? MACH[t].name.slice(0, 8) + '.' : MACH[t].name, key, t === 'del' ? '#e5484d' : kindColor(t));
   });
+  bar.scrollLeft = sl;
 }
 function buildOrders() {
   const box = $('orders'); const key = JSON.stringify(G.orders.map(o => [o.v, o.got, o.need]));
