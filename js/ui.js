@@ -127,6 +127,7 @@ function loop(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; acc += dt;
   while (acc >= 1 / 30) { step(1 / 30); acc -= 1 / 30; }
   saveT += dt; if (saveT > 5) { saveT = 0; saveGame(); }
+  $('hint').classList.toggle('off', G.list.length > 0 || G.delivered > 0);
   buildOrders(); updTop(); render(ghostList()); requestAnimationFrame(loop);
 }
 loadGame(); CAM.x = 0.5; CAM.y = 0.5; buildBar();
