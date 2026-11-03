@@ -3,6 +3,7 @@
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // 0 oben, 1 rechts, 2 unten, 3 links
 const SAVE_KEY = 'zahlenwerk_save_v1';
 const BELT_SPEED = 1.8, GAP = 0.46, EXT_CD = 1.1, PROC = 0.45;
+let onEvent = () => {};
 const isPrime = n => { if (n < 2) return false; for (let i = 2; i * i <= n; i++) if (n % i === 0) return false; return true; };
 const isSq = n => n >= 0 && Number.isInteger(Math.sqrt(n));
 
@@ -68,7 +69,8 @@ function place(type, x, y, rot) {
   if (old && old.type === type && old.rot === rot) return 'same';
   if (old && old.type === 'belt' && type === 'belt') { old.rot = rot; return 'ok'; }
   if (old) removeAt(x, y);
-  const b = { type, x, y, rot, items: [], st: {} };
+  const b = { type, x, y, rot, items: [], st: {}, born: G.t };
+  onEvent('place', b);
   if (type === 'extractor') b.st.v = deposit(x, y);
   G.cells.set(x + ',' + y, b); G.list.push(b); return 'ok';
 }
@@ -85,9 +87,9 @@ function give(fx, fy, d, v) {
   if (n.type === 'trash') return true;
   if (n.type === 'belt') {
     if (d === (n.rot + 2) % 4) return false;
-    const side = d !== n.rot, t0 = side ? 0.5 : 0;
-    for (const m of n.items) if (Math.abs(m.t - t0) < GAP) return false;
-    n.items.push({ v, t: t0, sd: side ? (d + 2) % 4 : -1 }); n.items.sort((a, b) => b.t - a.t); return true;
+    for (const m of n.items) if (m.t < GAP) return false;
+    const src = at(fx, fy);
+    n.items.push({ v, t: 0, ei: (d + 2) % 4, pop: src && src.type !== 'belt' ? 1 : 0 }); n.items.sort((a, b) => b.t - a.t); return true;
   }
   const def = MACH[n.type], rel = (((d + 2) % 4) - n.rot + 4) % 4, s = n.st;
   if (rel === 0 && n.type !== 'extractor') return false;
@@ -107,7 +109,7 @@ function updBelt(b, dt) {
 }
 function updMach(b, dt) {
   const s = b.st, def = MACH[b.type];
-  if (b.type === 'extractor') { s.cd = (s.cd || 0) - dt; if (s.cd <= 0) s.cd = give(b.x, b.y, b.rot, s.v) ? EXT_CD : 0; return; }
+  if (b.type === 'extractor') { s.cd = (s.cd || 0) - dt; if (s.cd <= 0) { if (give(b.x, b.y, b.rot, s.v)) { s.cd = EXT_CD; s.pulse = 1; } else s.cd = 0; } return; }
   if (b.type === 'split') {
     if (s.hold == null) return;
     const dirs = [b.rot, (b.rot + 1) % 4, (b.rot + 3) % 4];
@@ -123,13 +125,15 @@ function updMach(b, dt) {
     return;
   }
   if (s.cd > 0) { s.cd -= dt; return; }
-  if (def.bin && s.a != null && s.b != null) { const r = def.f(s.a, s.b); s.a = s.b = null; s.cd = PROC; if (r != null && Math.abs(r) <= 999999) s.out.push({ v: r, d: b.rot }); }
-  else if (def.un && s.a != null) { const r = def.f(s.a); s.a = null; s.cd = PROC; if (r != null && Math.abs(r) <= 999999) s.out.push({ v: r, d: b.rot }); }
-  else if (def.flt && s.a != null) { const ok = def.p(s.a); s.out.push({ v: s.a, d: ok ? b.rot : (b.rot + 1) % 4 }); s.a = null; s.cd = PROC; }
+  if (def.bin && s.a != null && s.b != null) { const r = def.f(s.a, s.b); s.a = s.b = null; s.cd = PROC; s.pulse = 1; if (r != null && Math.abs(r) <= 999999) s.out.push({ v: r, d: b.rot }); }
+  else if (def.un && s.a != null) { const r = def.f(s.a); s.a = null; s.cd = PROC; s.pulse = 1; if (r != null && Math.abs(r) <= 999999) s.out.push({ v: r, d: b.rot }); }
+  else if (def.flt && s.a != null) { const ok = def.p(s.a); s.out.push({ v: s.a, d: ok ? b.rot : (b.rot + 1) % 4 }); s.a = null; s.cd = PROC; s.pulse = 1; }
 }
 function step(dt) {
   G.t += dt;
-  for (const b of G.list) { if (b.type === 'belt') updBelt(b, dt); else updMach(b, dt); }
+  for (const b of G.list) { if (b.type === 'belt') updBelt(b, dt); else { updMach(b, dt); if (b.st.pulse > 0) b.st.pulse = Math.max(0, b.st.pulse - dt * 3.5); } }
+  for (const b of G.list) for (const m of b.items) if (m.pop > 0) m.pop = Math.max(0, m.pop - dt * 4);
+  if (hubB.st.pulse > 0) hubB.st.pulse = Math.max(0, hubB.st.pulse - dt * 2.5);
 }
 
 // ---- Auftraege & Forschung ----
@@ -148,9 +152,8 @@ function genOrder() {
   return { v: 7, need: 4, got: 0, reward: 8 };
 }
 function ensureOrders() { while (G.orders.length < 3) G.orders.push(genOrder()); }
-let onEvent = () => {};
 function deliver(v) {
-  G.stock[v] = (G.stock[v] || 0) + 1; G.delivered++;
+  G.stock[v] = (G.stock[v] || 0) + 1; G.delivered++; hubB.st.pulse = 1; onEvent('deliver', v);
   const o = G.orders.find(o => o.v === v && o.got < o.need);
   if (o) { o.got++; if (o.got >= o.need) { G.pts += o.reward; G.done++; G.orders[G.orders.indexOf(o)] = genOrder(); onEvent('order', o); } }
 }

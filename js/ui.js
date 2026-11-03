@@ -2,10 +2,26 @@
 // Zahlenwerk - Bedienung
 const UI = { tool: null, rot: 1, last: null, mx: 0, my: 0, pan: null, ptrs: new Map(), pinch: null, painting: false, seen: new Set(JSON.parse(localStorage.getItem('zahlenwerk_seen') || '[]')) };
 const $ = id => document.getElementById(id);
-const SYM = { belt: '➜', extractor: '◉', trash: '✕', split: '⑂', del: '⌫' };
+const SVG = {
+  hand: '<path d="M5 3l14 7.5-6.2 2L10.600 19z"/>',
+  belt: '<path d="M4 12h14M13 6l6 6-6 6"/>',
+  extractor: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/>',
+  trash: '<path d="M6 6l12 12M18 6L6 18"/>',
+  split: '<path d="M12 20v-8M12 12L5 6M12 12l7-6M12 12V4"/>',
+  del: '<path d="M5 7h14M9 7V5h6v2M7 7l1 12h8l1-12M10 11v5M14 11v5"/>'
+};
+const svg = k => '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + SVG[k] + '</svg>';
+const SYM = {};
+const kindColor = t => { const d = MACH[t]; return !d ? '' : d.bin ? '#2f6fe0' : d.un ? '#1fa36a' : d.flt ? '#f08a24' : '#4b5563'; };
 let toastT = 0;
 function toast(t) { const e = $('toast'); e.textContent = t; e.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => e.hidden = true, 2200); }
-onEvent = (k, o) => { if (k === 'order') toast('Auftrag ' + o.v + ' erfüllt: +' + o.reward + ' Punkte'); };
+UI.ready = false;
+onEvent = (k, o) => {
+  if (!UI.ready) return;
+  if (k === 'order') { toast('Auftrag ' + o.v + ' erfüllt  ·  +' + o.reward + ' Punkte'); snd('order'); for (const c of NUMCOL.slice(1)) fxBurst(c, 8, 0.5, 0.5, 3.4); }
+  else if (k === 'deliver') snd('deliver', o);
+  else if (k === 'place') snd('place');
+};
 
 function toolList() { const a = TOOL_ORDER.filter(t => G.unl.has(t)); a.push('del'); return a; }
 function selectTool(t) { UI.tool = t; UI.last = null; document.body.classList.toggle('tool', !!t); buildBar(); showTip(t); }
@@ -16,15 +32,16 @@ function showTip(t) {
 }
 function buildBar() {
   const bar = $('bar'); bar.innerHTML = '';
-  const mk = (id, sym, label, key) => {
-    const b = document.createElement('button'); b.className = 'tool' + (UI.tool === id ? ' on' : '') + (id && UI.seen.has('new:' + id) ? '' : '');
+  const mk = (id, sym, label, key, color) => {
+    const b = document.createElement('button'); b.className = 'tool' + (UI.tool === id ? ' on' : ''); if (color) b.style.setProperty('--c', color);
     b.innerHTML = (key ? '<span class="k">' + key + '</span>' : '') + '<span class="s">' + sym + '</span><span class="l">' + label + '</span>';
-    b.onclick = e => { e.stopPropagation(); selectTool(UI.tool === id ? null : id); }; bar.appendChild(b);
+    b.onclick = e => { e.stopPropagation(); sndInit(); selectTool(UI.tool === id ? null : id); }; bar.appendChild(b);
   };
-  mk(null, '✋', 'Hand', '');
+  mk(null, svg('hand'), 'Hand', '');
   toolList().forEach((t, i) => {
     const key = i < 9 ? String(i + 1) : i === 9 ? '0' : '';
-    mk(t, t === 'del' ? SYM.del : (MACH[t].sym || SYM[t]), t === 'del' ? 'Abriss' : MACH[t].name.length > 9 ? MACH[t].name.slice(0, 8) + '.' : MACH[t].name, key);
+    const ic = t === 'del' || SVG[t] ? svg(t) : MACH[t].sym;
+    mk(t, ic, t === 'del' ? 'Abriss' : MACH[t].name.length > 9 ? MACH[t].name.slice(0, 8) + '.' : MACH[t].name, key, t === 'del' ? '#e5484d' : kindColor(t));
   });
 }
 function buildOrders() {
@@ -32,7 +49,7 @@ function buildOrders() {
   if (buildOrders.k === key) return; buildOrders.k = key; box.innerHTML = '';
   for (const o of G.orders) {
     const d = document.createElement('div'); d.className = 'ord';
-    d.innerHTML = '<div class="n' + (o.v % 2 ? ' o' : '') + '">' + o.v + '</div><div class="m"><b>' + o.got + ' / ' + o.need + '</b><br>+' + o.reward + ' Punkte<div class="bar"><i style="width:' + Math.round(100 * o.got / o.need) + '%"></i></div></div>';
+    d.innerHTML = '<div class="n" style="color:' + numCol(o.v) + '">' + o.v + '</div><div class="m"><b>' + o.got + ' / ' + o.need + '</b><br>+' + o.reward + ' Punkte<div class="bar"><i style="width:' + Math.round(100 * o.got / o.need) + '%"></i></div></div>';
     box.appendChild(d);
   }
 }
@@ -47,8 +64,8 @@ function buildResearch() {
   const keys = Object.keys(MACH).filter(k => MACH[k].cost).sort((a, b) => MACH[a].cost - MACH[b].cost);
   for (const k of keys) {
     const d = MACH[k], have = G.unl.has(k), e = document.createElement('div'); e.className = 'ri' + (have ? ' have' : '');
-    e.innerHTML = '<div class="s">' + (d.sym || SYM[k] || '?') + '</div><div class="t"><b>' + d.name + '</b><span>' + d.info + '</span></div>' + (have ? '' : '<button' + (G.pts < d.cost ? ' disabled' : '') + '>' + d.cost + '</button>');
-    if (!have) e.querySelector('button').onclick = () => { if (buy(k)) { buildResearch(); buildBar(); updTop(); saveGame(); toast(d.name + ' freigeschaltet'); } };
+    e.innerHTML = '<div class="s" style="color:' + (have ? '' : kindColor(k)) + '">' + (d.sym || (SVG[k] ? svg(k) : '?')) + '</div><div class="t"><b>' + d.name + '</b><span>' + d.info + '</span></div>' + (have ? '' : '<button' + (G.pts < d.cost ? ' disabled' : '') + '>' + d.cost + '</button>');
+    if (!have) e.querySelector('button').onclick = () => { if (buy(k)) { buildResearch(); buildBar(); updTop(); saveGame(); toast(d.name + ' freigeschaltet'); snd('unlock'); } };
     l.appendChild(e);
   }
 }
@@ -59,24 +76,28 @@ $('btnMenu').onclick = e => { e.stopPropagation(); $('menu').hidden = !$('menu')
 $('mHome').onclick = () => { CAM.x = 0.5; CAM.y = 0.5; $('menu').hidden = true; };
 $('mSave').onclick = () => { saveGame(); toast('Gespeichert'); $('menu').hidden = true; };
 $('mReset').onclick = () => { $('menu').hidden = true; if (confirm('Wirklich alles löschen und neu anfangen?')) { resetGame(); selectTool(null); buildOrders.k = ''; } };
+const updSnd = () => $('mSound').textContent = 'Ton: ' + (SND.on ? 'an' : 'aus');
+$('mSound').onclick = () => { SND.on = !SND.on; try { localStorage.setItem('zahlenwerk_mute', SND.on ? '0' : '1'); } catch (e) {} updSnd(); sndInit(); snd('place'); };
+updSnd();
 $('btnRot').onclick = e => { e.stopPropagation(); UI.rot = (UI.rot + 1) % 4; };
 
 // ---- Eingabe ----
 const cellAt = (sx, sy) => [Math.floor(s2wx(sx)), Math.floor(s2wy(sy))];
 function act(x, y, from) {
   const t = UI.tool; if (!t) return;
-  if (t === 'del') { removeAt(x, y); return; }
+  if (t === 'del') { if (removeAt(x, y)) snd('del'); return; }
   let rot = UI.rot;
   if (t === 'belt' && from && (from[0] !== x || from[1] !== y)) {
     const dx = x - from[0], dy = y - from[1];
     if (Math.abs(dx) + Math.abs(dy) === 1) { rot = DIRS.findIndex(d => d[0] === dx && d[1] === dy); UI.rot = rot; const p = at(from[0], from[1]); if (p && p.type === 'belt') p.rot = rot; }
   }
   const r = place(t, x, y, rot);
-  if (r === 'nodep') toast('Förderer gehen nur auf Zahlenfeldern');
+  if (r === 'nodep') { toast('Förderer gehen nur auf Zahlenfeldern'); snd('err'); }
   else if (r === 'hub') toast('Der Hub ist im Weg');
 }
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => {
+  sndInit();
   $('menu').hidden = true; cv.setPointerCapture(e.pointerId); UI.ptrs.set(e.pointerId, [e.clientX, e.clientY]); UI.mx = e.clientX; UI.my = e.clientY;
   if (e.button === 2) { if (UI.tool) selectTool(null); return; }
   if (UI.ptrs.size === 2) { UI.painting = false; UI.pan = null; const [a, b] = [...UI.ptrs.values()]; UI.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: CAM.z, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 }; return; }
@@ -88,7 +109,7 @@ cv.addEventListener('pointermove', e => {
   if (UI.ptrs.has(e.pointerId)) UI.ptrs.set(e.pointerId, [e.clientX, e.clientY]);
   if (UI.pinch && UI.ptrs.size >= 2) {
     const [a, b] = [...UI.ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-    CAM.z = Math.max(14, Math.min(120, UI.pinch.z * d / UI.pinch.d)); return;
+    CAM.z = CAM.tz = Math.max(14, Math.min(120, UI.pinch.z * d / UI.pinch.d)); return;
   }
   if (UI.painting) {
     const [x, y] = cellAt(e.clientX, e.clientY);
@@ -103,9 +124,8 @@ cv.addEventListener('pointermove', e => {
 const up = e => { UI.ptrs.delete(e.pointerId); if (UI.ptrs.size < 2) UI.pinch = null; if (!UI.ptrs.size) { UI.painting = false; UI.pan = null; UI.last = null; } };
 cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
 cv.addEventListener('wheel', e => {
-  e.preventDefault(); const wx = s2wx(e.clientX), wy = s2wy(e.clientY);
-  CAM.z = Math.max(14, Math.min(120, CAM.z * Math.exp(-e.deltaY * 0.0015)));
-  CAM.x = wx - (e.clientX - W / 2) / CAM.z; CAM.y = wy - (e.clientY - H / 2) / CAM.z;
+  e.preventDefault(); UI.za = { sx: e.clientX, sy: e.clientY, wx: s2wx(e.clientX), wy: s2wy(e.clientY) };
+  CAM.tz = Math.max(14, Math.min(120, CAM.tz * Math.exp(-e.deltaY * 0.0015)));
 }, { passive: false });
 addEventListener('keydown', e => {
   if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
@@ -120,16 +140,19 @@ addEventListener('keydown', e => {
 function ghostList() {
   if (!UI.tool || UI.tool === 'del' || UI.ptrs.size > 1) return null;
   const [x, y] = cellAt(UI.mx, UI.my); if (Math.abs(x) <= 1 && Math.abs(y) <= 1) return null;
-  return [{ type: UI.tool, x, y, rot: UI.rot, items: [], st: { v: deposit(x, y) || null } }];
+  const dep = deposit(x, y), ok = UI.tool !== 'extractor' || dep;
+  return [{ type: UI.tool, x, y, rot: UI.rot, items: [], st: { v: dep || null }, valid: !!ok }];
 }
 let lastT = performance.now(), acc = 0, saveT = 0;
 function loop(now) {
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now; acc += dt;
   while (acc >= 1 / 30) { step(1 / 30); acc -= 1 / 30; }
+  fxUpdate(dt);
+  if (Math.abs(CAM.tz - CAM.z) > 0.01) { CAM.z += (CAM.tz - CAM.z) * Math.min(1, dt * 14); if (UI.za) { CAM.x = UI.za.wx - (UI.za.sx - W / 2) / CAM.z; CAM.y = UI.za.wy - (UI.za.sy - H / 2) / CAM.z; } }
   saveT += dt; if (saveT > 5) { saveT = 0; saveGame(); }
   $('hint').classList.toggle('off', G.list.length > 0 || G.delivered > 0);
   buildOrders(); updTop(); render(ghostList()); requestAnimationFrame(loop);
 }
-loadGame(); CAM.x = 0.5; CAM.y = 0.5; buildBar();
+loadGame(); CAM.x = 0.5; CAM.y = 0.5; buildBar(); UI.ready = true;
 addEventListener('beforeunload', saveGame); document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 requestAnimationFrame(loop);
