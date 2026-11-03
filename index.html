@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Zahlenwerk</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="top">
+  <div id="pts"><b id="ptsN">0</b><span>Punkte</span></div>
+  <div class="sp"></div>
+  <button id="btnRes" class="tb">Forschung<i id="resDot"></i></button>
+  <button id="btnMenu" class="tb sq" aria-label="Menü">&#9776;</button>
+  <div id="menu" hidden>
+    <button id="mHome">Zum Hub springen</button>
+    <button id="mSave">Speichern</button>
+    <button id="mReset">Neu anfangen</button>
+  </div>
+</div>
+<div id="orders"></div>
+<div id="bar"></div>
+<div id="rot"><button id="btnRot" aria-label="Drehen">&#8635;</button></div>
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+<div id="research" hidden><div class="card"><div class="rh"><b>Forschung</b><span id="resPts"></span><button id="resClose" class="tb sq">&#10005;</button></div><div id="resList"></div></div></div>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
